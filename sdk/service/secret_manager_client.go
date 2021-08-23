@@ -42,15 +42,14 @@ type baseSecretManagerClientBuilder struct {
 
 type defaultSecretManagerClientBuilder struct {
 	baseSecretManagerClientBuilder
-
 	regionInfos     []*models.RegionInfo
 	credential      auth.Credential
 	backoffStrategy BackoffStrategy
+	signer          auth.Signer
 }
 
 type defaultSecretManagerClient struct {
 	*defaultSecretManagerClientBuilder
-
 	clientMap map[string]*kms.Client
 	clientMtx sync.Mutex
 }
@@ -154,9 +153,18 @@ func (dsb *defaultSecretManagerClientBuilder) sortRegionInfos(regionInfos []*mod
 }
 
 func (dmc *defaultSecretManagerClient) Init() error {
-	err := dmc.initEnv()
+	err := dmc.initProperties()
 	if err != nil {
 		return err
+	}
+	err = dmc.initEnv()
+	if err != nil {
+		return err
+	}
+	credential, yes := dmc.credential.(*models.ClientKeyCredential)
+	if yes {
+		dmc.signer = credential.Signer
+		dmc.credential = credential.Credential
 	}
 	UserAgentManager.RegisterUserAgent(utils.UserAgentOfSecretsManagerGolang, 0, utils.ProjectVersion)
 	if dmc.backoffStrategy == nil {
@@ -237,7 +245,8 @@ func (dmc *defaultSecretManagerClient) getSecretValue(regionInfo *models.RegionI
 	if err != nil {
 		return nil, err
 	}
-	return client.GetSecretValue(req)
+	response := kms.CreateGetSecretValueResponse()
+	return response, client.DoActionWithSigner(req, response, dmc.signer)
 }
 
 func (dmc *defaultSecretManagerClient) getClient(regionInfo *models.RegionInfo) (*kms.Client, error) {
@@ -265,33 +274,20 @@ func (dmc *defaultSecretManagerClient) getClient(regionInfo *models.RegionInfo) 
 	return kmsClient, nil
 }
 
-func (dmc *defaultSecretManagerClient) initEnv() error {
-	if len(dmc.regionInfos) == 0 {
-		regionInfoJson := os.Getenv(utils.EnvCacheClientRegionIdKey)
-		if regionInfoJson == "" {
-			return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvCacheClientRegionIdKey))
-		}
-		var regionInfoList []map[string]interface{}
-		err := json.Unmarshal([]byte(regionInfoJson), &regionInfoList)
+func (dmc *defaultSecretManagerClient) initProperties() error {
+	if dmc.credential == nil {
+		credentialsProperties, err := utils.LoadCredentialsProperties("")
 		if err != nil {
 			return err
 		}
-		for _, regionInfoMap := range regionInfoList {
-			regionId, err := utils.ParseString(regionInfoMap[utils.EnvRegionRegionIdNameKey])
-			if err != nil {
-				return err
-			}
-			endpoint, err := utils.ParseString(regionInfoMap[utils.EnvRegionEndpointNameKey])
-			if err != nil {
-				return err
-			}
-			vpc, err := utils.ParseBool(regionInfoMap[utils.EnvRegionVpcNameKey])
-			if err != nil {
-				return err
-			}
-			dmc.regionInfos = append(dmc.regionInfos, &models.RegionInfo{RegionId: regionId, Endpoint: endpoint, Vpc: vpc})
+		if credentialsProperties != nil {
+			dmc.credential = credentialsProperties.Credential
+			dmc.regionInfos = credentialsProperties.RegionInfoSlice
 		}
 	}
+	return nil
+}
+func (dmc *defaultSecretManagerClient) initEnv() error {
 	if dmc.credential == nil {
 		credentialsType := os.Getenv(utils.EnvCredentialsTypeKey)
 		if credentialsType == "" {
@@ -340,8 +336,49 @@ func (dmc *defaultSecretManagerClient) initEnv() error {
 			}
 			dmc.credential = utils.CredentialsWithEcsRamRole(roleName)
 			break
+		case "client_key":
+			privateKeyPath := os.Getenv(utils.EnvClientKeyPrivateKeyPathNameKey)
+			if privateKeyPath == "" {
+				return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvClientKeyPrivateKeyPathNameKey))
+			}
+			password, err := utils.GetPassword(nil)
+			if err != nil {
+				return err
+			}
+			credential, signer, err := utils.LoadRsaKeyPairCredentialAndClientKeySigner(privateKeyPath, password)
+			if err != nil {
+				return err
+			}
+			dmc.credential = models.NewClientKeyCredential(signer, credential)
+			break
 		default:
 			return errors.New(fmt.Sprintf("env param[%s] is illegal", utils.EnvCredentialsTypeKey))
+		}
+		if dmc.credential != nil {
+			regionInfoJson := os.Getenv(utils.EnvCacheClientRegionIdKey)
+			if regionInfoJson == "" {
+				return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvCacheClientRegionIdKey))
+			}
+			var regionInfoList []map[string]interface{}
+			err := json.Unmarshal([]byte(regionInfoJson), &regionInfoList)
+			if err != nil {
+				return err
+			}
+			for _, regionInfoMap := range regionInfoList {
+				regionId, err := utils.ParseString(regionInfoMap[utils.EnvRegionRegionIdNameKey])
+				if err != nil {
+					return err
+				}
+				endpoint, err := utils.ParseString(regionInfoMap[utils.EnvRegionEndpointNameKey])
+				if err != nil {
+					return err
+				}
+				vpc, err := utils.ParseBool(regionInfoMap[utils.EnvRegionVpcNameKey])
+				if err != nil {
+					return err
+				}
+				dmc.regionInfos = append(dmc.regionInfos, &models.RegionInfo{RegionId: regionId, Endpoint: endpoint, Vpc: vpc})
+			}
 		}
 	}
 	return nil
