@@ -84,4 +84,21 @@ const (
 
 	// KMS服务无法连接错误码
 	SdkServerUnreachable = "SDK.ServerUnreachable"
+
+	//环境变量client_key_password key
+	EnvClientKeyPasswordNameKey = "client_key_password"
+
+	// 环境变量credentials_client_key_private_key_path key
+	EnvClientKeyPrivateKeyPathNameKey = "client_key_private_key_path"
+
+	// 环境变量 client_key_password_from_env_variable key
+	EnvClientKeyPasswordFromEnvVariableNameKey = "client_key_password_from_env_variable"
+
+	// 配置文件 client_key_password_from_file_path key
+	PropertiesClientKeyPasswordFromFilePathName = "client_key_password_from_file_path"
+	//默认的 credentials配置文件
+	DEFAULT_CONFIG_NAME = "secretsmanager.properties"
+
+	// 配置文件 secret_names key
+	PROPERTIES_SECRET_NAMES_KEY = "secret_names"
 )
