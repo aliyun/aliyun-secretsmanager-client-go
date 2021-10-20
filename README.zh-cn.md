@@ -34,10 +34,10 @@ $ go get -u github.com/aliyun/aliyun-secretsmanager-client-go
 ```go
 package main
 
-import "github.com/aliyun/aliyun-secretsmanager-client-go/sdk/service"
+import "github.com/aliyun/aliyun-secretsmanager-client-go/sdk"
 
 func main() {
-	client, err := service.NewClient()
+	client, err := sdk.NewClient()
 	if err != nil {
 		// Handle exceptions
 		panic(err)
@@ -81,17 +81,12 @@ package main
 import (
 	"github.com/aliyun/aliyun-secretsmanager-client-go/sdk/service"
 	"github.com/aliyun/aliyun-secretsmanager-client-go/sdk"
+    "github.com/aliyun/aliyun-secretsmanager-client-go/sdk/cache"
 )
 
 func main() {
 	client, err := sdk.NewSecretCacheClientBuilder(
-		service.NewDefaultSecretManagerClientBuilder().Standard()
-	.WithAccessKey(accessKeyId, accessKeySecret).WithRegion("#regionId#")
-	.WithBackoffStrategy(&service.FullJitterBackoffStrategy{RetryMaxAttempts: 3, RetryInitialIntervalMills: 2000, Capacity: 10000}).Build())
-	.WithCacheSecretStrategy(cache.NewFileCacheSecretStoreStrategy("#cacheSecretPath#", true, "#salt#"))
-	.WithRefreshSecretStrategy(service.NewDefaultRefreshSecretStrategy("#jsonTTLPropertyName#"))
-	.WithCacheStage("ACSCurrent")
-	.WithSecretTTL(secretName, 1*60*1000).Build()
+    		service.NewDefaultSecretManagerClientBuilder().Standard().WithAccessKey("#accessKeyId#", "#accessKeySecret#").WithRegion("#regionId#").WithBackoffStrategy(&service.FullJitterBackoffStrategy{RetryMaxAttempts: 3, RetryInitialIntervalMills: 2000, Capacity: 10000}).Build()).WithCacheSecretStrategy(cache.NewFileCacheSecretStoreStrategy("#cacheSecretPath#", true, "#salt#")).WithRefreshSecretStrategy(service.NewDefaultRefreshSecretStrategy("#jsonTTLPropertyName#")).WithCacheStage("ACSCurrent").WithSecretTTL("#secretName#", 1*60*1000).Build()
 	if err != nil {
 		// Handle exceptions
 		panic(err)
