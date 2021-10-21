@@ -56,13 +56,13 @@ func parseConfig(filepath string, v interface{}) error {
 }
 
 func GetPassword(configMap map[string]string) (string, error) {
-	passwordFromEnvVariable := os.Getenv(EnvClientKeyPasswordFromEnvVariableNameKey)
-	password := ""
-	if passwordFromEnvVariable != "" {
-		password = os.Getenv(passwordFromEnvVariable)
-	}
-	if password == "" {
-		if configMap != nil {
+	var passwordFromEnvVariable, password string
+	if configMap != nil {
+		passwordFromEnvVariable = configMap[EnvClientKeyPasswordFromEnvVariableNameKey]
+		if passwordFromEnvVariable != "" {
+			password = os.Getenv(passwordFromEnvVariable)
+		}
+		if password == "" {
 			passwordFilePath := configMap[PropertiesClientKeyPasswordFromFilePathName]
 			if passwordFilePath != "" {
 				file, err := os.Open(passwordFilePath)
@@ -76,8 +76,26 @@ func GetPassword(configMap map[string]string) (string, error) {
 				}
 				password = string(fd)
 			}
-			if password == "" {
-				password = configMap[EnvClientKeyPasswordNameKey]
+		}
+	}
+	if password == "" {
+		passwordFromEnvVariable = os.Getenv(EnvClientKeyPasswordFromEnvVariableNameKey)
+		if passwordFromEnvVariable != "" {
+			password = os.Getenv(passwordFromEnvVariable)
+		}
+		if password == "" {
+			passwordFilePath := os.Getenv(PropertiesClientKeyPasswordFromFilePathName)
+			if passwordFilePath != "" {
+				file, err := os.Open(passwordFilePath)
+				defer file.Close()
+				if err != nil {
+					return "", err
+				}
+				fd, err := ioutil.ReadAll(file)
+				if err != nil {
+					return "", err
+				}
+				password = string(fd)
 			}
 		}
 	}
