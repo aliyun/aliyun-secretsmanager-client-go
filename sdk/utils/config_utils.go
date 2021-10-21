@@ -21,7 +21,7 @@ func LoadProperties(fileName string) (map[string]string, error) {
 	for {
 		str, err := srcReader.ReadString('\n')
 		if err != nil {
-			if err == io.EOF {
+			if err == io.EOF && (0 == len(str) || str == "\n" || strings.HasPrefix(strings.TrimSpace(str), "#")) {
 				break
 			}
 		}
