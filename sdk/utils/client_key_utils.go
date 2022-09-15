@@ -55,15 +55,15 @@ func parseConfig(filepath string, v interface{}) error {
 	return json.NewDecoder(file).Decode(v)
 }
 
-func GetPassword(configMap map[string]string) (string, error) {
+func GetPassword(configMap map[string]string, envVariableName string, filePathName string) (string, error) {
 	var passwordFromEnvVariable, password string
 	if configMap != nil {
-		passwordFromEnvVariable = configMap[EnvClientKeyPasswordFromEnvVariableNameKey]
+		passwordFromEnvVariable = configMap[envVariableName]
 		if passwordFromEnvVariable != "" {
 			password = os.Getenv(passwordFromEnvVariable)
 		}
 		if password == "" {
-			passwordFilePath := configMap[PropertiesClientKeyPasswordFromFilePathName]
+			passwordFilePath := configMap[filePathName]
 			if passwordFilePath != "" {
 				file, err := os.Open(passwordFilePath)
 				defer file.Close()
@@ -77,14 +77,13 @@ func GetPassword(configMap map[string]string) (string, error) {
 				password = string(fd)
 			}
 		}
-	}
-	if password == "" {
-		passwordFromEnvVariable = os.Getenv(EnvClientKeyPasswordFromEnvVariableNameKey)
+	} else {
+		passwordFromEnvVariable = os.Getenv(envVariableName)
 		if passwordFromEnvVariable != "" {
 			password = os.Getenv(passwordFromEnvVariable)
 		}
 		if password == "" {
-			passwordFilePath := os.Getenv(PropertiesClientKeyPasswordFromFilePathName)
+			passwordFilePath := os.Getenv(filePathName)
 			if passwordFilePath != "" {
 				file, err := os.Open(passwordFilePath)
 				defer file.Close()
@@ -101,6 +100,9 @@ func GetPassword(configMap map[string]string) (string, error) {
 	}
 	if password == "" {
 		password = os.Getenv(EnvClientKeyPasswordNameKey)
+	}
+	if password == "" {
+		return "", errors.New("client key password is not provided")
 	}
 	return password, nil
 }

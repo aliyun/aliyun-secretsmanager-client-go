@@ -19,6 +19,9 @@ import (
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/auth"
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/kms"
+
+	"github.com/alibabacloud-go/tea/tea"
+	transfersdk "github.com/aliyun/alibabacloud-dkms-transfer-go-sdk/sdk"
 )
 
 const (
@@ -42,15 +45,17 @@ type baseSecretManagerClientBuilder struct {
 
 type defaultSecretManagerClientBuilder struct {
 	baseSecretManagerClientBuilder
-	regionInfos     []*models.RegionInfo
-	credential      auth.Credential
-	backoffStrategy BackoffStrategy
-	signer          auth.Signer
+	regionInfos      []*models.RegionInfo
+	credential       auth.Credential
+	backoffStrategy  BackoffStrategy
+	signer           auth.Signer
+	dKmsConfigsMap   map[*models.RegionInfo]*models.DkmsConfig
+	customConfigFile string
 }
 
 type defaultSecretManagerClient struct {
 	*defaultSecretManagerClientBuilder
-	clientMap map[string]*kms.Client
+	clientMap map[*models.RegionInfo]interface{}
 	clientMtx sync.Mutex
 }
 
@@ -59,11 +64,15 @@ func NewBaseSecretManagerClientBuilder() *baseSecretManagerClientBuilder {
 }
 
 func NewDefaultSecretManagerClientBuilder() *defaultSecretManagerClientBuilder {
-	return &defaultSecretManagerClientBuilder{}
+	return &defaultSecretManagerClientBuilder{
+		dKmsConfigsMap: make(map[*models.RegionInfo]*models.DkmsConfig),
+	}
 }
 
 func (base *baseSecretManagerClientBuilder) Standard() *defaultSecretManagerClientBuilder {
-	return &defaultSecretManagerClientBuilder{}
+	return &defaultSecretManagerClientBuilder{
+		dKmsConfigsMap: make(map[*models.RegionInfo]*models.DkmsConfig),
+	}
 }
 
 func (dsb *defaultSecretManagerClientBuilder) WithToken(tokenId, token string) *defaultSecretManagerClientBuilder {
@@ -100,10 +109,26 @@ func (dsb *defaultSecretManagerClientBuilder) WithBackoffStrategy(backoffStrateg
 	return dsb
 }
 
+func (dsb *defaultSecretManagerClientBuilder) AddDkmsConfig(dkmsConfig *models.DkmsConfig) *defaultSecretManagerClientBuilder {
+	regionInfo := &models.RegionInfo{
+		KmsType:  utils.DkmsType,
+		RegionId: tea.StringValue(dkmsConfig.RegionId),
+		Endpoint: tea.StringValue(dkmsConfig.Endpoint),
+	}
+	dsb.dKmsConfigsMap[regionInfo] = dkmsConfig
+	dsb.AddRegionInfo(regionInfo)
+	return dsb
+}
+
+func (dsb *defaultSecretManagerClientBuilder) WithCustomConfigFile(customConfigFile string) *defaultSecretManagerClientBuilder {
+	dsb.customConfigFile = customConfigFile
+	return dsb
+}
+
 func (dsb *defaultSecretManagerClientBuilder) Build() SecretManagerClient {
 	return &defaultSecretManagerClient{
 		defaultSecretManagerClientBuilder: dsb,
-		clientMap:                         make(map[string]*kms.Client),
+		clientMap:                         make(map[*models.RegionInfo]interface{}),
 	}
 }
 
@@ -153,16 +178,22 @@ func (dsb *defaultSecretManagerClientBuilder) sortRegionInfos(regionInfos []*mod
 }
 
 func (dmc *defaultSecretManagerClient) Init() error {
-	err := dmc.initProperties()
+	err := dmc.initFromConfigFile()
 	if err != nil {
 		return err
 	}
-	err = dmc.initEnv()
+	err = dmc.initFromEnv()
 	if err != nil {
 		return err
 	}
-	credential, yes := dmc.credential.(*models.ClientKeyCredential)
-	if yes {
+	if len(dmc.regionInfos) == 0 {
+		return errors.New("the param[regionInfo] is needed")
+	}
+	if len(dmc.dKmsConfigsMap) == 0 && dmc.credential == nil {
+		return errors.New("the param[credentials] is needed")
+	}
+	credential, ok := dmc.credential.(*models.ClientKeyCredential)
+	if ok {
 		dmc.signer = credential.Signer
 		dmc.credential = credential.Credential
 	}
@@ -183,6 +214,7 @@ func (dmc *defaultSecretManagerClient) GetSecretValue(req *kms.GetSecretValueReq
 	var errs []error
 	var wg sync.WaitGroup
 	finished := int32(len(dmc.regionInfos))
+	retryEnd := make(chan struct{})
 	for i, regionInfo := range dmc.regionInfos {
 		if i == 0 {
 			resp, err := dmc.getSecretValue(regionInfo, req)
@@ -204,8 +236,8 @@ func (dmc *defaultSecretManagerClient) GetSecretValue(req *kms.GetSecretValueReq
 		request.SecretName = req.SecretName
 		request.VersionStage = req.VersionStage
 		request.FetchExtendedConfig = requests.NewBoolean(true)
-		go func(wg *sync.WaitGroup, finished *int32) {
-			if resp, err := dmc.retryGetSecretValue(request, regionInfo); err == nil {
+		go func(wg *sync.WaitGroup, finished *int32, retryEnd <-chan struct{}) {
+			if resp, err := dmc.retryGetSecretValue(request, regionInfo, retryEnd); err == nil {
 				results = append(results, resp)
 				wg.Done()
 			} else {
@@ -220,9 +252,10 @@ func (dmc *defaultSecretManagerClient) GetSecretValue(req *kms.GetSecretValueReq
 					wg.Done()
 				}
 			}
-		}(&wg, &finished)
+		}(&wg, &finished, retryEnd)
 	}
 	dmc.waitTimeout(&wg, time.Duration(RequestWaitingTime)*time.Millisecond)
+	close(retryEnd)
 	if len(results) == 0 {
 		var errStr string
 		for _, err := range errs {
@@ -235,7 +268,12 @@ func (dmc *defaultSecretManagerClient) GetSecretValue(req *kms.GetSecretValueReq
 
 func (dmc *defaultSecretManagerClient) Close() error {
 	for _, client := range dmc.clientMap {
-		client.Shutdown()
+		switch c := client.(type) {
+		case *kms.Client:
+			c.Shutdown()
+		case *transfersdk.KmsTransferClient:
+			c.Shutdown()
+		}
 	}
 	return nil
 }
@@ -245,19 +283,43 @@ func (dmc *defaultSecretManagerClient) getSecretValue(regionInfo *models.RegionI
 	if err != nil {
 		return nil, err
 	}
-	response := kms.CreateGetSecretValueResponse()
-	return response, client.DoActionWithSigner(req, response, dmc.signer)
+	switch c := client.(type) {
+	case *kms.Client:
+		response := kms.CreateGetSecretValueResponse()
+		return response, utils.TransferErrorToClientError(c.DoActionWithSigner(req, response, dmc.signer))
+	case *transfersdk.KmsTransferClient:
+		response, err := c.GetSecretValue(req)
+		return response, utils.TransferErrorToClientError(err)
+	}
+	return nil, errors.New("getClient unknown kms client type")
 }
 
-func (dmc *defaultSecretManagerClient) getClient(regionInfo *models.RegionInfo) (*kms.Client, error) {
-	if client, ok := dmc.clientMap[regionInfo.RegionId]; ok {
+func (dmc *defaultSecretManagerClient) getClient(regionInfo *models.RegionInfo) (interface{}, error) {
+	if client, ok := dmc.clientMap[regionInfo]; ok {
 		return client, nil
 	}
 	dmc.clientMtx.Lock()
 	defer dmc.clientMtx.Unlock()
-	if client, ok := dmc.clientMap[regionInfo.RegionId]; ok {
+	if client, ok := dmc.clientMap[regionInfo]; ok {
 		return client, nil
 	}
+	if regionInfo.KmsType == utils.DkmsType {
+		kmsTransferClient, err := dmc.buildDKmsTransferClient(regionInfo)
+		if err != nil {
+			return nil, err
+		}
+		dmc.clientMap[regionInfo] = kmsTransferClient
+	} else {
+		kmsClient, err := dmc.buildKmsClient(regionInfo)
+		if err != nil {
+			return nil, err
+		}
+		dmc.clientMap[regionInfo] = kmsClient
+	}
+	return dmc.clientMap[regionInfo], nil
+}
+
+func (dmc *defaultSecretManagerClient) buildKmsClient(regionInfo *models.RegionInfo) (*kms.Client, error) {
 	config := sdk.NewConfig()
 	kmsClient, err := kms.NewClientWithOptions(regionInfo.RegionId, config, dmc.credential)
 	if err != nil {
@@ -270,149 +332,245 @@ func (dmc *defaultSecretManagerClient) getClient(regionInfo *models.RegionInfo) 
 	}
 	kmsClient.SetHTTPSInsecure(true)
 	kmsClient.AppendUserAgent(UserAgentManager.GetUserAgent(), UserAgentManager.GetProjectVersion())
-	dmc.clientMap[regionInfo.RegionId] = kmsClient
 	return kmsClient, nil
 }
 
-func (dmc *defaultSecretManagerClient) initProperties() error {
-	if dmc.credential == nil {
-		credentialsProperties, err := utils.LoadCredentialsProperties("")
+func (dmc *defaultSecretManagerClient) buildDKmsTransferClient(regionInfo *models.RegionInfo) (*transfersdk.KmsTransferClient, error) {
+	dkmsConfig, ok := dmc.dKmsConfigsMap[regionInfo]
+	if !ok {
+		return nil, errors.New("unrecognized regionId")
+	}
+	config := dkmsConfig.Config
+	config.RegionId = tea.String(regionInfo.RegionId)
+	config.Endpoint = tea.String(regionInfo.Endpoint)
+	config.Password = dkmsConfig.Password
+	kmsTransferClient, err := transfersdk.NewClientWithAccessKey(regionInfo.RegionId, utils.PretendAk, utils.PretendSk, config)
+	if err != nil {
+		return nil, err
+	}
+	kmsTransferClient.SetHTTPSInsecure(dkmsConfig.IgnoreSslCerts)
+	if !dkmsConfig.IgnoreSslCerts {
+		kmsTransferClient.SetVerify(dkmsConfig.CaCert)
+	}
+	kmsTransferClient.AppendUserAgent(UserAgentManager.GetUserAgent(), UserAgentManager.GetProjectVersion())
+	return kmsTransferClient, nil
+}
+
+func (dmc *defaultSecretManagerClient) initFromConfigFile() error {
+	credentialsProperties, err := utils.LoadCredentialsProperties(dmc.customConfigFile)
+	if err != nil {
+		return err
+	}
+	if credentialsProperties != nil {
+		dmc.credential = credentialsProperties.Credential
+		dmc.regionInfos = append(dmc.regionInfos, credentialsProperties.RegionInfoSlice...)
+		for regionInfo, dkmsConfig := range credentialsProperties.DkmsConfigsMap {
+			dmc.dKmsConfigsMap[regionInfo] = dkmsConfig
+		}
+	}
+	return nil
+}
+
+func (dmc *defaultSecretManagerClient) initFromEnv() error {
+	err := dmc.initCredentialFromEnv()
+	if err != nil {
+		return err
+	}
+	err = dmc.initDkmsInstancesFromEnv()
+	if err != nil {
+		return err
+	}
+	err = dmc.initKmsRegionsFromEnv()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (dmc *defaultSecretManagerClient) initCredentialFromEnv() error {
+	credentialsType := os.Getenv(utils.EnvCredentialsTypeKey)
+	if credentialsType == "" {
+		return nil
+	}
+	switch credentialsType {
+	case "ak":
+		accessKeyId := os.Getenv(utils.EnvCredentialsAccessKeyIdKey)
+		err := dmc.checkEnvParam(accessKeyId, utils.EnvCredentialsAccessKeyIdKey)
 		if err != nil {
 			return err
 		}
-		if credentialsProperties != nil {
-			dmc.credential = credentialsProperties.Credential
-			dmc.regionInfos = credentialsProperties.RegionInfoSlice
+		accessSecret := os.Getenv(utils.EnvCredentialsAccessSecretKey)
+		err = dmc.checkEnvParam(accessSecret, utils.EnvCredentialsAccessSecretKey)
+		if err != nil {
+			return err
 		}
-	}
-	return nil
-}
-func (dmc *defaultSecretManagerClient) initEnv() error {
-	if dmc.credential == nil {
-		credentialsType := os.Getenv(utils.EnvCredentialsTypeKey)
-		if credentialsType == "" {
-			return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvCredentialsTypeKey))
+		dmc.credential = utils.CredentialsWithAccessKey(accessKeyId, accessSecret)
+	case "token":
+		tokenId := os.Getenv(utils.EnvCredentialsAccessTokenIdKey)
+		err := dmc.checkEnvParam(tokenId, utils.EnvCredentialsAccessTokenIdKey)
+		if err != nil {
+			return err
 		}
+		token := os.Getenv(utils.EnvCredentialsAccessTokenKey)
+		err = dmc.checkEnvParam(token, utils.EnvCredentialsAccessTokenKey)
+		if err != nil {
+			return err
+		}
+		dmc.credential = utils.CredentialsWithToken(tokenId, token)
+	case "sts", "ram_role":
 		accessKeyId := os.Getenv(utils.EnvCredentialsAccessKeyIdKey)
-		if accessKeyId == "" {
-			return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvCredentialsAccessKeyIdKey))
+		err := dmc.checkEnvParam(accessKeyId, utils.EnvCredentialsAccessKeyIdKey)
+		if err != nil {
+			return err
 		}
 		accessSecret := os.Getenv(utils.EnvCredentialsAccessSecretKey)
-		if accessSecret == "" {
-			return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvCredentialsAccessSecretKey))
+		err = dmc.checkEnvParam(accessSecret, utils.EnvCredentialsAccessSecretKey)
+		if err != nil {
+			return err
 		}
-		switch credentialsType {
-		case "ak":
-			dmc.credential = utils.CredentialsWithAccessKey(accessKeyId, accessSecret)
-			break
-		case "token":
-			tokenId := os.Getenv(utils.EnvCredentialsAccessTokenIdKey)
-			if tokenId == "" {
-				return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvCredentialsAccessTokenIdKey))
-			}
-			token := os.Getenv(utils.EnvCredentialsAccessTokenKey)
-			if token == "" {
-				return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvCredentialsAccessTokenKey))
-			}
-			dmc.credential = utils.CredentialsWithToken(tokenId, token)
-			break
-		case "sts":
-		case "ram_role":
-			roleSessionName := os.Getenv(utils.EnvCredentialsRoleSessionNameKey)
-			if roleSessionName == "" {
-				return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvCredentialsRoleSessionNameKey))
-			}
-			roleArn := os.Getenv(utils.EnvCredentialsRoleArnKey)
-			if roleArn == "" {
-				return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvCredentialsRoleArnKey))
-			}
-			policy := os.Getenv(utils.EnvCredentialsPolicyKey)
-			dmc.credential = utils.CredentialsWithRamRoleArnOrSts(accessKeyId, accessSecret, roleSessionName, roleArn, policy)
-			break
-		case "ecs_ram_role":
-			roleName := os.Getenv(utils.EnvCredentialsRoleNameKey)
-			if roleName == "" {
-				return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvCredentialsRoleNameKey))
-			}
-			dmc.credential = utils.CredentialsWithEcsRamRole(roleName)
-			break
-		case "client_key":
-			privateKeyPath := os.Getenv(utils.EnvClientKeyPrivateKeyPathNameKey)
-			if privateKeyPath == "" {
-				return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvClientKeyPrivateKeyPathNameKey))
-			}
-			password, err := utils.GetPassword(nil)
-			if err != nil {
-				return err
-			}
-			credential, signer, err := utils.LoadRsaKeyPairCredentialAndClientKeySigner(privateKeyPath, password)
-			if err != nil {
-				return err
-			}
-			dmc.credential = models.NewClientKeyCredential(signer, credential)
-			break
-		default:
-			return errors.New(fmt.Sprintf("env param[%s] is illegal", utils.EnvCredentialsTypeKey))
+		roleSessionName := os.Getenv(utils.EnvCredentialsRoleSessionNameKey)
+		err = dmc.checkEnvParam(roleSessionName, utils.EnvCredentialsRoleSessionNameKey)
+		if err != nil {
+			return err
 		}
-		if dmc.credential != nil {
-			regionInfoJson := os.Getenv(utils.EnvCacheClientRegionIdKey)
-			if regionInfoJson == "" {
-				return errors.New(fmt.Sprintf("env param[%s] is required", utils.EnvCacheClientRegionIdKey))
-			}
-			var regionInfoList []map[string]interface{}
-			err := json.Unmarshal([]byte(regionInfoJson), &regionInfoList)
-			if err != nil {
-				return err
-			}
-			for _, regionInfoMap := range regionInfoList {
-				regionId, err := utils.ParseString(regionInfoMap[utils.EnvRegionRegionIdNameKey])
-				if err != nil {
-					return err
-				}
-				endpoint, err := utils.ParseString(regionInfoMap[utils.EnvRegionEndpointNameKey])
-				if err != nil {
-					return err
-				}
-				vpc, err := utils.ParseBool(regionInfoMap[utils.EnvRegionVpcNameKey])
-				if err != nil {
-					return err
-				}
-				dmc.regionInfos = append(dmc.regionInfos, &models.RegionInfo{RegionId: regionId, Endpoint: endpoint, Vpc: vpc})
-			}
+		roleArn := os.Getenv(utils.EnvCredentialsRoleArnKey)
+		err = dmc.checkEnvParam(roleArn, utils.EnvCredentialsRoleArnKey)
+		if err != nil {
+			return err
 		}
+		policy := os.Getenv(utils.EnvCredentialsPolicyKey)
+		dmc.credential = utils.CredentialsWithRamRoleArnOrSts(accessKeyId, accessSecret, roleSessionName, roleArn, policy)
+	case "ecs_ram_role":
+		roleName := os.Getenv(utils.EnvCredentialsRoleNameKey)
+		err := dmc.checkEnvParam(roleName, utils.EnvCredentialsRoleNameKey)
+		if err != nil {
+			return err
+		}
+		dmc.credential = utils.CredentialsWithEcsRamRole(roleName)
+	case "client_key":
+		privateKeyPath := os.Getenv(utils.EnvClientKeyPrivateKeyPathNameKey)
+		err := dmc.checkEnvParam(privateKeyPath, utils.EnvClientKeyPrivateKeyPathNameKey)
+		if err != nil {
+			return err
+		}
+		password, err := utils.GetPassword(nil, utils.EnvClientKeyPasswordFromEnvVariableNameKey, utils.PropertiesClientKeyPasswordFromFilePathName)
+		if err != nil {
+			return err
+		}
+		credential, signer, err := utils.LoadRsaKeyPairCredentialAndClientKeySigner(privateKeyPath, password)
+		if err != nil {
+			return err
+		}
+		dmc.credential = models.NewClientKeyCredential(signer, credential)
+	default:
+		return errors.New(fmt.Sprintf("env param[%s] is illegal", utils.EnvCredentialsTypeKey))
 	}
 	return nil
 }
 
-func (dmc *defaultSecretManagerClient) retryGetSecretValue(req *kms.GetSecretValueRequest, regionInfo *models.RegionInfo) (*kms.GetSecretValueResponse, error) {
+func (dmc *defaultSecretManagerClient) initKmsRegionsFromEnv() error {
+	regionInfosJson := os.Getenv(utils.EnvCacheClientRegionIdKey)
+	if regionInfosJson == "" {
+		return nil
+	}
+	var regionInfos []map[string]interface{}
+	err := json.Unmarshal([]byte(regionInfosJson), &regionInfos)
+	if err != nil {
+		return errors.New(fmt.Sprintf("env param[%s] is illegal, err: %v", utils.EnvCacheClientRegionIdKey, err))
+	}
+	for _, regionInfoMap := range regionInfos {
+		regionId, err := utils.ParseString(regionInfoMap[utils.EnvRegionRegionIdNameKey])
+		if err != nil {
+			return err
+		}
+		endpoint, err := utils.ParseString(regionInfoMap[utils.EnvRegionEndpointNameKey])
+		if err != nil {
+			return err
+		}
+		var vpc bool
+		if regionInfoMap[utils.EnvRegionVpcNameKey] == "" {
+			vpc = false
+		} else {
+			vpc, err = utils.ParseBool(regionInfoMap[utils.EnvRegionVpcNameKey])
+			if err != nil {
+				return err
+			}
+		}
+		dmc.regionInfos = append(dmc.regionInfos, models.NewRegionInfoWithKmsType(regionId, vpc, endpoint, utils.KmsType))
+	}
+	return nil
+}
+
+func (dmc *defaultSecretManagerClient) initDkmsInstancesFromEnv() error {
+	configJson := os.Getenv(utils.CacheClientDkmsConfigInfoKey)
+	if configJson == "" {
+		return nil
+	}
+	var dkmsConfigs []*models.DkmsConfig
+	err := json.Unmarshal([]byte(configJson), &dkmsConfigs)
+	if err != nil {
+		return errors.New(fmt.Sprintf("env param[%s] is illegal, err:%v", utils.CacheClientDkmsConfigInfoKey, err))
+	}
+	for _, dkmsConfig := range dkmsConfigs {
+		if tea.StringValue(dkmsConfig.RegionId) == "" || tea.StringValue(dkmsConfig.Endpoint) == "" || tea.StringValue(dkmsConfig.ClientKeyFile) == "" {
+			return errors.New("init env fail,cause of cache_client_dkms_config_info param[regionId or endpoint or clientKeyFile] is empty")
+		}
+		password, err := utils.GetPassword(nil, dkmsConfig.PasswordFromEnvVariable, dkmsConfig.PasswordFromFilePathName)
+		if err != nil {
+			return err
+		}
+		dkmsConfig.Password = tea.String(password)
+		regionInfo := models.NewRegionInfoWithKmsType(
+			tea.StringValue(dkmsConfig.RegionId),
+			false,
+			tea.StringValue(dkmsConfig.Endpoint),
+			utils.DkmsType,
+		)
+		dmc.dKmsConfigsMap[regionInfo] = dkmsConfig
+		dmc.regionInfos = append(dmc.regionInfos, regionInfo)
+	}
+	return nil
+}
+
+func (dmc *defaultSecretManagerClient) checkEnvParam(param, paramName string) error {
+	if param == "" {
+		return errors.New(fmt.Sprintf("env param[%s] is required", paramName))
+	}
+	return nil
+}
+
+func (dmc *defaultSecretManagerClient) retryGetSecretValue(req *kms.GetSecretValueRequest, regionInfo *models.RegionInfo, retryEnd <-chan struct{}) (*kms.GetSecretValueResponse, error) {
 	retryTimes := 0
 	for {
-		// todo: 这里需要增加退出机制防止无限重试
+		select {
+		case <-retryEnd:
+			return nil, errors.New(fmt.Sprintf("action:retryGetSecretValue, retry end"))
+		default:
+			waitTimeExponential := dmc.backoffStrategy.GetWaitTimeExponential(retryTimes)
+			if waitTimeExponential < 0 {
+				return nil, errors.New(fmt.Sprintf("action:retryGetSecretValue, Times limit exceeded"))
+			}
 
-		waitTimeExponential := dmc.backoffStrategy.GetWaitTimeExponential(retryTimes)
-		if waitTimeExponential < 0 {
-			return nil, errors.New(fmt.Sprintf("Times limit exceeded"))
-		}
+			time.Sleep(time.Duration(waitTimeExponential) * time.Millisecond)
 
-		time.Sleep(time.Duration(waitTimeExponential) * time.Millisecond)
-
-		resp, err := dmc.getSecretValue(regionInfo, req)
-		if err == nil {
-			return resp, nil
+			resp, err := dmc.getSecretValue(regionInfo, req)
+			if err == nil {
+				return resp, nil
+			}
+			logger.GetCommonLogger(utils.ModeName).Errorf("action:retryGetSecretValue, regionInfo:%+v, %+v", regionInfo, err)
+			if !utils.JudgeNeedRecoveryException(err) {
+				return nil, err
+			}
+			retryTimes += 1
 		}
-		logger.GetCommonLogger(utils.ModeName).Errorf("action:getSecretValue, regionInfo:%+v, %+v", regionInfo, err)
-		if !utils.JudgeNeedRecoveryException(err) {
-			return nil, err
-		}
-		retryTimes += 1
 	}
 }
 
 func (dmc *defaultSecretManagerClient) waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		wg.Wait()
-		done <- struct{}{}
 	}()
 	select {
 	case <-done:

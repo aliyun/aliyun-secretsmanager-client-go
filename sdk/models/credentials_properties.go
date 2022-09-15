@@ -7,6 +7,10 @@ type CredentialsProperties struct {
 	SecretNameSlice  []string
 	RegionInfoSlice  []*RegionInfo
 	SourceProperties map[string]string
+
+	DkmsConfigsMap map[*RegionInfo]*DkmsConfig
+	PrivateKeyPath string
+	Password       string
 }
 
 func NewCredentialsProperties(credential auth.Credential, secretNameSlice []string, regionInfoSlice []*RegionInfo, sourceProperties map[string]string) *CredentialsProperties {
