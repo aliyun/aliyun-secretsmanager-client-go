@@ -81,25 +81,13 @@ func (scb *SecretCacheClientBuilder) WithLogger(l logger.Wrapper) *SecretCacheCl
 
 // 构建Cache Client对象
 func (scb *SecretCacheClientBuilder) Build() (*SecretManagerCacheClient, error) {
-	scb.buildSecretCacheClient()
 	if !logger.IsRegistered(utils.ModeName) {
 		err := logger.RegisterLogger(utils.ModeName, logger.NewDefaultLogger(log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)))
 		if err != nil {
 			return nil, err
 		}
 	}
-	if scb.secretCacheClient.secretManagerClient == nil {
-		scb.secretCacheClient.secretManagerClient = service.NewBaseSecretManagerClientBuilder().Standard().Build()
-	}
-	if scb.secretCacheClient.cacheSecretStoreStrategy == nil {
-		scb.secretCacheClient.cacheSecretStoreStrategy = cache.NewMemoryCacheSecretStoreStrategy()
-	}
-	if scb.secretCacheClient.refreshSecretStrategy == nil {
-		scb.secretCacheClient.refreshSecretStrategy = service.NewDefaultRefreshSecretStrategy(scb.secretCacheClient.jsonTTLPropertyName)
-	}
-	if scb.secretCacheClient.cacheHook == nil {
-		scb.secretCacheClient.cacheHook = cache.NewDefaultSecretCacheHook(scb.secretCacheClient.stage)
-	}
+	scb.buildSecretCacheClient()
 	err := scb.secretCacheClient.Init()
 	if err != nil {
 		return nil, err

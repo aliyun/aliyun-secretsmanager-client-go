@@ -61,18 +61,13 @@ func (drs *defaultRefreshSecretStrategy) ParseTTL(secretInfo *models.SecretInfo)
 	if drs.jsonTTLPropertyName == "" {
 		return -1
 	}
-	var secretValue map[string]interface{}
-	err := json.Unmarshal([]byte(secretInfo.SecretValue), &secretValue)
+	secretValue := &struct{ Ttl int64 }{-1}
+	err := json.Unmarshal([]byte(secretInfo.SecretValue), secretValue)
 	if err != nil {
-		logger.GetCommonLogger(utils.ModeName).Errorf("ParseTTL:%s", err.Error())
+		logger.GetCommonLogger(utils.ModeName).Warnf("ParseTTL:%s", err.Error())
 		return -1
 	}
-	if ttl, ok := secretValue[drs.jsonTTLPropertyName]; ok {
-		if v, okk := ttl.(int64); okk {
-			return v
-		}
-	}
-	return -1
+	return secretValue.Ttl
 }
 
 func (drs *defaultRefreshSecretStrategy) Close() error {

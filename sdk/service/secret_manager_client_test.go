@@ -40,7 +40,7 @@ func TestDefaultSecretManagerClientBuilder_Build(t *testing.T) {
 	vpc := true
 	vpcEndpoint := "kms-vpc.cn-hangzhou.aliyuncs.com"
 
-	builder := NewDefaultSecretManagerClientBuilder().Standard()
+	builder := NewDefaultSecretManagerClientBuilder()
 	builder.WithRegion(regionId1)
 	builder.AddRegionInfo(&models.RegionInfo{Vpc: vpc, Endpoint: vpcEndpoint})
 	builder.WithAccessKey(accessKeyId, accessKeySecret)
@@ -64,7 +64,7 @@ func TestDefaultSecretManagerClient_GetSecretValue(t *testing.T) {
 	regionIds := []string{"cn-hangzhou", "cn-shanghai", "cn-beijing", "cn-xxxx"}
 	secretName := "sdk"
 
-	builder := NewDefaultSecretManagerClientBuilder().Standard()
+	builder := NewDefaultSecretManagerClientBuilder()
 	builder.WithAccessKey(accessKeyId, accessKeySecret)
 	builder.WithBackoffStrategy(&FullJitterBackoffStrategy{3, 2000, 10000})
 	builder.WithRegion(regionIds...)

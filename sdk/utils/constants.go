@@ -80,7 +80,8 @@ const (
 	EnvRegionVpcNameKey = "vpc"
 
 	// KMS服务Socket连接超时错误码
-	SdkReadTimeout = "SDK.ReadTimeout"
+	SdkReadTimeout  = "SDK.ReadTimeout"
+	SdkTimeoutError = "SDK.TimeoutError"
 
 	// KMS服务无法连接错误码
 	SdkServerUnreachable = "SDK.ServerUnreachable"
@@ -96,9 +97,23 @@ const (
 
 	// 配置文件 client_key_password_from_file_path key
 	PropertiesClientKeyPasswordFromFilePathName = "client_key_password_from_file_path"
-	//默认的 credentials配置文件
-	DEFAULT_CONFIG_NAME = "secretsmanager.properties"
+	// 默认的 credentials配置文件
+	DefaultConfigName = "secretsmanager.properties"
 
 	// 配置文件 secret_names key
-	PROPERTIES_SECRET_NAMES_KEY = "secret_names"
+	PropertiesSecretNamesKey = "secret_names"
+
+	// 环境变量cache_client_dkms_config_info key
+	CacheClientDkmsConfigInfoKey = "cache_client_dkms_config_info"
+
+	// 环境变量 ignoreSSLCerts key
+	ENV_IGNORE_SSL_CERTS_KEY = "ignoreSSLCerts"
+
+	// 虚假的AKSK
+	PretendAk = "PRETEND_AK"
+	PretendSk = "PRETEND_SK"
+
+	// KMS类型
+	DkmsType = 1
+	KmsType  = 0
 )

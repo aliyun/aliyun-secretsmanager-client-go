@@ -58,17 +58,29 @@ func NewSecretCacheClient() *SecretManagerCacheClient {
 }
 
 func (scc *SecretManagerCacheClient) Init() error {
+	if scc.secretManagerClient == nil {
+		scc.secretManagerClient = service.NewDefaultSecretManagerClientBuilder().Build()
+	}
 	err := scc.secretManagerClient.Init()
 	if err != nil {
 		return err
+	}
+	if scc.cacheSecretStoreStrategy == nil {
+		scc.cacheSecretStoreStrategy = cache.NewMemoryCacheSecretStoreStrategy()
 	}
 	err = scc.cacheSecretStoreStrategy.Init()
 	if err != nil {
 		return err
 	}
+	if scc.refreshSecretStrategy == nil {
+		scc.refreshSecretStrategy = service.NewDefaultRefreshSecretStrategy(scc.jsonTTLPropertyName)
+	}
 	err = scc.refreshSecretStrategy.Init()
 	if err != nil {
 		return err
+	}
+	if scc.cacheHook == nil {
+		scc.cacheHook = cache.NewDefaultSecretCacheHook(scc.stage)
 	}
 	err = scc.cacheHook.Init()
 	if err != nil {
@@ -220,7 +232,7 @@ func (scc *SecretManagerCacheClient) getSecretValue(secretName string) (*models.
 		if utils.JudgeNeedRecoveryException(err) {
 			secretInfo, inErr := scc.cacheHook.RecoveryGetSecret(secretName)
 			if inErr != nil {
-				logger.GetCommonLogger(utils.ModeName).Errorf("action:getSecretValue", inErr)
+				logger.GetCommonLogger(utils.ModeName).Errorf("action:recoveryGetSecret", inErr)
 				return nil, inErr
 			}
 			if secretInfo == nil {
@@ -361,6 +373,7 @@ func (rst *refreshSecretTask) getRunnable() func() {
 		if err != nil {
 			logger.GetCommonLogger(utils.ModeName).Errorf("action:refreshSecretTask", err)
 		}
+		rst.client.removeRefreshTask(rst.secretName)
 		err = rst.client.addRefreshTask(rst.secretName, rst)
 		if err != nil {
 			logger.GetCommonLogger(utils.ModeName).Errorf("action:addRefreshTask", err)
