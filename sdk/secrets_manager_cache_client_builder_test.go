@@ -21,7 +21,7 @@ func TestSecretCacheClientBuilder_Build(t *testing.T) {
 	jsonTTLPropertyName := "ttl"
 	secretName := "cache_client"
 
-	client, err := NewSecretCacheClientBuilder(service.NewDefaultSecretManagerClientBuilder().Standard().WithAccessKey(accessKeyId, accessKeySecret).WithRegion(regionId).WithBackoffStrategy(&service.FullJitterBackoffStrategy{RetryMaxAttempts: 3, RetryInitialIntervalMills: 2000, Capacity: 10000}).Build()).WithCacheSecretStrategy(cache.NewFileCacheSecretStoreStrategy(cacheSecretPath, true, salt)).WithRefreshSecretStrategy(service.NewDefaultRefreshSecretStrategy(jsonTTLPropertyName)).WithCacheStage(utils.StageAcsCurrent).WithLogger(logger.NewDefaultLogger(log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile))).WithSecretTTL(secretName, 1*60*1000).Build()
+	client, err := NewSecretCacheClientBuilder(service.NewDefaultSecretManagerClientBuilder().WithAccessKey(accessKeyId, accessKeySecret).WithRegion(regionId).WithBackoffStrategy(&service.FullJitterBackoffStrategy{RetryMaxAttempts: 3, RetryInitialIntervalMills: 2000, Capacity: 10000}).Build()).WithCacheSecretStrategy(cache.NewFileCacheSecretStoreStrategy(cacheSecretPath, true, salt)).WithRefreshSecretStrategy(service.NewDefaultRefreshSecretStrategy(jsonTTLPropertyName)).WithCacheStage(utils.StageAcsCurrent).WithLogger(logger.NewDefaultLogger(log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile))).WithSecretTTL(secretName, 1*60*1000).Build()
 	assert.Nil(t, err)
 	assert.NotNil(t, client)
 
@@ -40,7 +40,7 @@ func TestNewClient(t *testing.T) {
 	println("secretInfo:", secretInfo.SecretValue)
 }
 func TestNewSecretCacheClientBuilder(t *testing.T) {
-	client, _ := NewSecretCacheClientBuilder(service.NewDefaultSecretManagerClientBuilder().Standard().WithAccessKey(accessKeyId, accessKeySecret).Build()).Build()
+	client, _ := NewSecretCacheClientBuilder(service.NewDefaultSecretManagerClientBuilder().WithAccessKey(accessKeyId, accessKeySecret).Build()).Build()
 	secretInfo, err := client.GetSecretInfo("cache_client")
 	assert.Nil(t, err)
 	println("secretInfo:", secretInfo.SecretValue)
