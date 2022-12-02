@@ -32,7 +32,7 @@ $ go get -u github.com/aliyun/aliyun-secretsmanager-client-go
 
 ## Sample Code
 ### Ordinary User Sample Code
-* Build Secrets Manager Client by system environment variables ([system environment variables setting for details](README_environment.md))
+* Build Secrets Manager Client by system environment variables or configuration file (secretsmanager.properties) ([system environment variables setting for details](README_environment.md),[configure configuration details](README_config.md))
 
 ```go
 package main
