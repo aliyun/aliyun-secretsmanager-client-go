@@ -43,22 +43,22 @@ Use Aliyun Secrets Manager client by system environment variables with the below
 
 * Access aliyun dedicated kms, you must set the following system environment variables (for linux):
 
-	- export cache_client_dkms_config_info=[{"ignoreSslCerts":false,"caCert":"path/to/caCert","passwordFromFilePathName":"client_key_password_from_file_path","clientKeyFile":"\<your client key file absolute path>","regionId":"\<your dkms region>","endpoint":"\<your dkms endpoint>"}]
+	- export cache_client_dkms_config_info=[{"ignoreSslCerts":false,"passwordFromEnvVariable":"client_key_password_from_env_variable","clientKeyFile":"\<your client key file absolute path>","regionId":"\<your dkms region>","endpoint":"\<your dkms endpoint>","caFilePath":"\<your CA certificate file absolute path>"}]
     ```
-        The details of the configuration item named cache_client_dkms_config_info:
-        1. The configuration item named cache_client_dkms_config_info must be configured as a json array, you can configure multiple region instances
-        2. ignoreSslCerts:If ignore ssl certs (true: Ignores the ssl certificate, false: Validates the ssl certificate)
-  		3. caCert:CA certificate file path, or certificate pem content. If ignoreSslCerts is false, caCert is required. if ignoreSslCerts is true, ignore caCert.
-        4. passwordFromFilePathName and passwordFromEnvVariable
-          passwordFromFilePathName:The client key password configuration is obtained from the file,choose one of the two with passwordFromEnvVariable.
-          e.g. while configuring passwordFromFilePathName: "client_key_password_from_file_path",
-                       You need to add client_key_password_from_file_path=< your password file absolute path > in env.
-                       and correspond to a file with a password written on it.
-          passwordFromEnvVariable:The client key password configuration is obtained from the environment variable,choose one of the two with passwordFromFilePathName.
-          e.g. while configuring passwordFromEnvVariable: "client_key_password_from_env_variable",
-                       You need to add client_key_password_from_env_variable=< your client key private key password from environment variable > in env
-                       and the corresponding env variable (xxx_env_variable=<your password>).
-        5. clientKeyFile:The absolute path to the client key json file
-        6. regionId:Region id
-        7. endpoint:Domain address of dkms
+        cache_client_dkms_config_info配置项说明:
+        1. cache_client_dkms_config_info配置项为json数组，支持配置多个region实例
+        2. ignoreSslCerts:是否忽略ssl证书 (true:忽略ssl证书,false:验证ssl证书)
+        3. passwordFromFilePath、passwordFromFilePathName和passwordFromEnvVariable
+           passwordFromFilePath和passwordFromFilePathName:client key密码配置从文件中获取，与passwordFromEnvVariable三选一
+           例:当配置passwordFromFilePath:<你的client key密码文件所在的绝对路径>,需在配置的绝对路径下配置写有password的文件
+           例:当配置passwordFromFilePathName:"client_key_password_from_file_path"时，
+             需在环境变量中添加client_key_password_from_file_path=<你的client key密码文件所在的绝对路径>，
+             以及对应写有password的文件。
+           例:当配置passwordFromEnvVariable:"client_key_password_from_env_variable"时，
+             需在环境变量中添加client_key_password_from_env_variable=<你的client key密码对应的环境变量名>
+             以及对应的环境变量(xxx_env_variable=<your password>)。
+        4. clientKeyFile:client key json文件的绝对路径
+        5. regionId:地域Id
+        6. endpoint:专属kms的域名地址
+  		7. caFilePath:专属kms的CA证书绝对路径
     ```

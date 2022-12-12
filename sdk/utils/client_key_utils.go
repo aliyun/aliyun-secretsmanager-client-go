@@ -65,16 +65,7 @@ func GetPassword(configMap map[string]string, envVariableName string, filePathNa
 		if password == "" {
 			passwordFilePath := configMap[filePathName]
 			if passwordFilePath != "" {
-				file, err := os.Open(passwordFilePath)
-				defer file.Close()
-				if err != nil {
-					return "", err
-				}
-				fd, err := ioutil.ReadAll(file)
-				if err != nil {
-					return "", err
-				}
-				password = string(fd)
+				return ReadPasswordFile(passwordFilePath)
 			}
 		}
 	} else {
@@ -85,16 +76,7 @@ func GetPassword(configMap map[string]string, envVariableName string, filePathNa
 		if password == "" {
 			passwordFilePath := os.Getenv(filePathName)
 			if passwordFilePath != "" {
-				file, err := os.Open(passwordFilePath)
-				defer file.Close()
-				if err != nil {
-					return "", err
-				}
-				fd, err := ioutil.ReadAll(file)
-				if err != nil {
-					return "", err
-				}
-				password = string(fd)
+				return ReadPasswordFile(passwordFilePath)
 			}
 		}
 	}
@@ -105,4 +87,17 @@ func GetPassword(configMap map[string]string, envVariableName string, filePathNa
 		return "", errors.New("client key password is not provided")
 	}
 	return password, nil
+}
+
+func ReadPasswordFile(passwordFilePath string) (string, error) {
+	file, err := os.Open(passwordFilePath)
+	defer file.Close()
+	if err != nil {
+		return "", err
+	}
+	fd, err := ioutil.ReadAll(file)
+	if err != nil {
+		return "", err
+	}
+	return string(fd), nil
 }
