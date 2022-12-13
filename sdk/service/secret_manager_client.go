@@ -205,7 +205,9 @@ func (dmc *defaultSecretManagerClient) Init() error {
 	if err != nil {
 		return err
 	}
-	dmc.regionInfos = dmc.sortRegionInfos(dmc.regionInfos)
+	if dmc.regionInfos!=nil && len(dmc.regionInfos)>1{
+		dmc.regionInfos = dmc.sortRegionInfos(dmc.regionInfos)
+	}
 	return nil
 }
 
