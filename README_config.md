@@ -77,7 +77,7 @@ cache_client_region_id=[{"regionId":"#regionId#"}]
 6. Access aliyun dedicated kms,you must set the following configuration variables
 
 ```properties
- cache_client_dkms_config_info=[{"regionId":"<your dkms region>","endpoint":"<your dkms endpoint>","passwordFromFilePath":"< your password file path >","clientKeyFile":"<your client key file path>","ignoreSslCerts":false,"caFilePath":"<your CA certificate file path>"}]
+ cache_client_dkms_config_info=[{"regionId":"<your dkms region>","endpoint":"<your dkms endpoint>","passwordFromFilePath":"< your password file path >","clientKeyFile":"<your client key file path>","ignoreSslCerts":false,"caCert":"<your CA certificate file path>"}]
 ```
 ```
     The details of the configuration item named cache_client_dkms_config_info:
