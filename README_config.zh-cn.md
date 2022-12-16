@@ -75,7 +75,7 @@ cache_client_region_id=[{"regionId":"#regionId#"}]
 
 6. 访问专属kms服务:
 ```properties
-cache_client_dkms_config_info=[{"regionId":"<your dkms region>","endpoint":"<your dkms endpoint>","passwordFromFilePath":"< your password file path >","clientKeyFile":"<your client key file path>","ignoreSslCerts":false,"caFilePath":"<your CA certificate file path>"}]
+cache_client_dkms_config_info=[{"regionId":"<your dkms region>","endpoint":"<your dkms endpoint>","passwordFromFilePath":"< your password file path >","clientKeyFile":"<your client key file path>","ignoreSslCerts":false,"caCert":"<your CA certificate file path>"}]
 ```
 ```
     cache_client_dkms_config_info配置项说明:
