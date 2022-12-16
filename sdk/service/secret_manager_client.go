@@ -205,7 +205,9 @@ func (dmc *defaultSecretManagerClient) Init() error {
 	if err != nil {
 		return err
 	}
-	dmc.regionInfos = dmc.sortRegionInfos(dmc.regionInfos)
+	if dmc.regionInfos != nil && len(dmc.regionInfos) > 1 {
+		dmc.regionInfos = dmc.sortRegionInfos(dmc.regionInfos)
+	}
 	return nil
 }
 
@@ -515,7 +517,12 @@ func (dmc *defaultSecretManagerClient) initDkmsInstancesFromEnv() error {
 		if tea.StringValue(dkmsConfig.RegionId) == "" || tea.StringValue(dkmsConfig.Endpoint) == "" || tea.StringValue(dkmsConfig.ClientKeyFile) == "" {
 			return errors.New("init env fail,cause of cache_client_dkms_config_info param[regionId or endpoint or clientKeyFile] is empty")
 		}
-		password, err := utils.GetPassword(nil, dkmsConfig.PasswordFromEnvVariable, dkmsConfig.PasswordFromFilePathName)
+		var password string
+		if dkmsConfig.PasswordFromFilePath != "" {
+			password, err = utils.ReadPasswordFile(dkmsConfig.PasswordFromFilePath)
+		} else {
+			password, err = utils.GetPassword(nil, dkmsConfig.PasswordFromEnvVariable, dkmsConfig.PasswordFromFilePathName)
+		}
 		if err != nil {
 			return err
 		}

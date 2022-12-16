@@ -130,7 +130,12 @@ func initDkmsInstances(configMap map[string]string, regionInfoSlice *[]*models.R
 			}
 			dkmsConfig.CaCert = string(caCert)
 		}
-		password, err := GetPassword(configMap, dkmsConfig.PasswordFromEnvVariable, dkmsConfig.PasswordFromFilePathName)
+		var password string
+		if dkmsConfig.PasswordFromFilePath != "" {
+			password, err = ReadPasswordFile(dkmsConfig.PasswordFromFilePath)
+		} else {
+			password, err = GetPassword(configMap, dkmsConfig.PasswordFromEnvVariable, dkmsConfig.PasswordFromFilePathName)
+		}
 		if err != nil {
 			if credentialsProperties.Password == "" {
 				return err
