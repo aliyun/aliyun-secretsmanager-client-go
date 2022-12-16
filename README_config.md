@@ -92,5 +92,5 @@ cache_client_region_id=[{"regionId":"#regionId#"}]
            You need to add your_password_env_variable=< your client key private key password > in env.
     5. clientKeyFile:The path to the client key json file
     6. ignoreSslCerts:If ignore ssl certs (true: Ignores the ssl certificate, false: Validates the ssl certificate)
-    7. caCert:CA certificate file path, or certificate pem content. If ignoreSslCerts is false, caCert is required. if ignoreSslCerts is true, ignore caCert.
+    7. caFilePath:The path of the CA certificate of the dkms
 ```
