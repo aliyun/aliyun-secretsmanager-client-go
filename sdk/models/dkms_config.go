@@ -8,5 +8,6 @@ type DkmsConfig struct {
 	PasswordFromEnvVariable  string
 	PasswordFromFilePathName string
 	CaCert                   string
+	CaFilePath               string
 	PasswordFromFilePath     string
 }
