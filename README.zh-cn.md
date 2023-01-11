@@ -57,10 +57,11 @@ package main
 import (
 	"github.com/aliyun/aliyun-secretsmanager-client-go/sdk/service"
 	"github.com/aliyun/aliyun-secretsmanager-client-go/sdk"
+	"os"
 )
 
 func main() {
-	client, err := sdk.NewSecretCacheClientBuilder(service.NewDefaultSecretManagerClientBuilder().Standard().WithAccessKey("#accessKeyId#", "#accessKeySecret#").WithRegion("#regionId#").Build()).Build()
+	client, err := sdk.NewSecretCacheClientBuilder(service.NewDefaultSecretManagerClientBuilder().Standard().WithAccessKey(os.Getenv("#accessKeyId#"), os.Getenv("#accessKeySecret#")).WithRegion("#regionId#").Build()).Build()
 	if err != nil {
 		// Handle exceptions
 		panic(err)
@@ -82,11 +83,12 @@ import (
 	"github.com/aliyun/aliyun-secretsmanager-client-go/sdk/service"
 	"github.com/aliyun/aliyun-secretsmanager-client-go/sdk"
     "github.com/aliyun/aliyun-secretsmanager-client-go/sdk/cache"
+	"os"
 )
 
 func main() {
 	client, err := sdk.NewSecretCacheClientBuilder(
-    		service.NewDefaultSecretManagerClientBuilder().Standard().WithAccessKey("#accessKeyId#", "#accessKeySecret#").WithRegion("#regionId#").WithBackoffStrategy(&service.FullJitterBackoffStrategy{RetryMaxAttempts: 3, RetryInitialIntervalMills: 2000, Capacity: 10000}).Build()).WithCacheSecretStrategy(cache.NewFileCacheSecretStoreStrategy("#cacheSecretPath#", true, "#salt#")).WithRefreshSecretStrategy(service.NewDefaultRefreshSecretStrategy("#jsonTTLPropertyName#")).WithCacheStage("ACSCurrent").WithSecretTTL("#secretName#", 1*60*1000).Build()
+    		service.NewDefaultSecretManagerClientBuilder().Standard().WithAccessKey(os.Getenv("#accessKeyId#"), os.Getenv("#accessKeySecret#")).WithRegion("#regionId#").WithBackoffStrategy(&service.FullJitterBackoffStrategy{RetryMaxAttempts: 3, RetryInitialIntervalMills: 2000, Capacity: 10000}).Build()).WithCacheSecretStrategy(cache.NewFileCacheSecretStoreStrategy("#cacheSecretPath#", true, "#salt#")).WithRefreshSecretStrategy(service.NewDefaultRefreshSecretStrategy("#jsonTTLPropertyName#")).WithCacheStage("ACSCurrent").WithSecretTTL("#secretName#", 1*60*1000).Build()
 	if err != nil {
 		// Handle exceptions
 		panic(err)
