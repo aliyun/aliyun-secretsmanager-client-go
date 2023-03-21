@@ -12,6 +12,7 @@ import (
 	"golang.org/x/crypto/pkcs12"
 	"io/ioutil"
 	"os"
+	"strings"
 )
 
 func LoadRsaKeyPairCredentialAndClientKeySigner(clientKeyPath, password string) (*credentials.RsaKeyPairCredential, *auth.ClientKeySigner, error) {
@@ -90,14 +91,9 @@ func GetPassword(configMap map[string]string, envVariableName string, filePathNa
 }
 
 func ReadPasswordFile(passwordFilePath string) (string, error) {
-	file, err := os.Open(passwordFilePath)
-	defer file.Close()
+	content, err := ioutil.ReadFile(passwordFilePath)
 	if err != nil {
 		return "", err
 	}
-	fd, err := ioutil.ReadAll(file)
-	if err != nil {
-		return "", err
-	}
-	return string(fd), nil
+	return strings.TrimSpace(string(content)), nil
 }
