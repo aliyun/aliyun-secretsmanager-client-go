@@ -346,6 +346,7 @@ func (dmc *defaultSecretManagerClient) buildDKmsTransferClient(regionInfo *model
 	config.RegionId = tea.String(regionInfo.RegionId)
 	config.Endpoint = tea.String(regionInfo.Endpoint)
 	config.Password = dkmsConfig.Password
+	config.UserAgent = tea.String(UserAgentManager.GetUserAgent() + "/" + UserAgentManager.GetProjectVersion())
 	kmsTransferClient, err := transfersdk.NewClientWithAccessKey(regionInfo.RegionId, utils.PretendAk, utils.PretendSk, config)
 	if err != nil {
 		return nil, err
