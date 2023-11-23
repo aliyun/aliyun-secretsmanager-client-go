@@ -8,6 +8,9 @@ import (
 
 func LoadProperties(fileName string) (map[string]string, error) {
 	properties := make(map[string]string)
+	if exist, _ := FileExist(fileName); !exist {
+		return nil, nil
+	}
 	file, err := os.OpenFile(fileName, os.O_RDONLY, 0666)
 	if err != nil {
 		return nil, err
