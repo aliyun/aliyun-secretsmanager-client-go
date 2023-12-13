@@ -65,7 +65,7 @@ const (
 	BinaryDataType = "binary"
 
 	// 项目版本
-	ProjectVersion = "1.1.4"
+	ProjectVersion = "1.1.5"
 
 	// the user agent of secrets manager golang
 	UserAgentOfSecretsManagerGolang = "aliyun-secretsmanager-client-go"

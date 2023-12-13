@@ -123,8 +123,8 @@ func initDkmsInstances(configMap map[string]string, regionInfoSlice *[]*models.R
 		if tea.StringValue(dkmsConfig.RegionId) == "" || tea.StringValue(dkmsConfig.Endpoint) == "" || tea.StringValue(dkmsConfig.ClientKeyFile) == "" {
 			return errors.New("init properties fail, cause of cache_client_dkms_config_info param[regionId or endpoint or clientKeyFile] is empty")
 		}
-		if dkmsConfig.CaFilePath != "" {
-			dkmsConfig.CaCert = dkmsConfig.CaFilePath
+		if dkmsConfig.CaFilePath != nil {
+			dkmsConfig.CaCert = tea.StringValue(dkmsConfig.CaFilePath)
 		}
 		if !dkmsConfig.IgnoreSslCerts && !strings.Contains(dkmsConfig.CaCert, "-----BEGIN CERTIFICATE-----") {
 			caCert, err := ioutil.ReadFile(dkmsConfig.CaCert)
